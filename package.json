@@ -14,7 +14,8 @@
   "homepage": "https://yian89215.github.io/thrift_store_mgmt",
   "dependencies": {
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
