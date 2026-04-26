@@ -3,11 +3,13 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
+import { onSnapshot, setDoc } from "firebase/firestore";
+import { SHOP_REF } from "./firebase";
 
 const CATS = {
-  fashion:  { label: "Ready-to-Wear", emoji: "👗", color: "#C17553", bg: "#FDF0E8" },
-  vintage:  { label: "Vintage",       emoji: "🧥", color: "#7D5F4E", bg: "#F2E8E3" },
-  handmade: { label: "Handmade",      emoji: "🧵", color: "#4A7C59", bg: "#E8F2EC" },
+  fashion:  { label: "Fasion",   emoji: "👗", color: "#C17553", bg: "#FDF0E8" },
+  vintage:  { label: "Unique",  emoji: "🧥", color: "#7D5F4E", bg: "#F2E8E3" },
+  handmade: { label: "Handmade", emoji: "🧵", color: "#4A7C59", bg: "#E8F2EC" },
 };
 
 const INTENT = {
@@ -15,8 +17,8 @@ const INTENT = {
   self_own: { label: "Self-Own", emoji: "💜", color: "#7B68C8", bg: "#F0EEFA" },
 };
 
-const PLATFORMS = ["Vinted", "Depop", "Instagram", "Facebook", "Shopee", "In Person", "Other"];
-const SOURCES   = ["Japan", "Korea", "Europe/US", "Local Market", "Online", "Self-made", "Other"];
+const PLATFORMS = ["Shopee", "Carousell", "Instagram", "Facebook", "Flea Market", "Physical shop"];
+const SOURCES   = ["Shopee", "Carousell", "Instagram", "Facebook", "Flea Market", "Physical shop"];
 
 const C = {
   cream: "#FAF5EE", card: "#FFFFFF",
@@ -36,27 +38,25 @@ const inputSt = {
 
 const EMPTY = { purchases: [], sales: [] };
 
-const loadData = async () => {
-  try {
-    const r = localStorage.getItem("vintage-shop-v2");
-    return r ? JSON.parse(r) : EMPTY;
-  } catch { return EMPTY; }
-};
-
-const saveData = async (d) => {
-  try { localStorage.setItem("vintage-shop-v2", JSON.stringify(d)); } catch {}
-};
-
 // ── HELPERS ──────────────────────────────────────
 
 const uid     = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-const today   = () => new Date().toISOString().slice(0, 10);
+const today   = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
 const monthOf = (s) => s?.slice(0, 7) ?? "";
 const fmt     = (n) => `$${Number(n || 0).toLocaleString()}`;
 const fmtDate = (s) => {
   if (!s) return "";
   const [y, m, d] = s.split("-");
   return `${parseInt(m)}/${parseInt(d)}/${y.slice(2)}`;
+};
+const parseDate = (s) => {
+  if (!s) return null;
+  const d = new Date(`${s}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 const getMonthLabel = (ym) => {
   if (!ym) return "";
@@ -70,6 +70,12 @@ const adjMonth = (ym, delta) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 const daysSince = (s) => Math.floor((Date.now() - new Date(s).getTime()) / 86400000);
+const daysBetween = (start, end) => {
+  const a = parseDate(start);
+  const b = parseDate(end);
+  if (!a || !b) return null;
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
+};
 
 // Resize image to base64 JPEG
 const resizeImage = (file) => new Promise(resolve => {
@@ -139,8 +145,8 @@ function ChipRow({ options, value, onChange, activeColor, activeBg }) {
   );
 }
 
-function MonthNav({ value, onChange }) {
-  const now = today().slice(0, 7);
+function MonthNav({ value, onChange, maxMonth }) {
+  const lastMonth = maxMonth || today().slice(0, 7);
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
       gap: 18, padding: "10px 0 14px" }}>
@@ -149,24 +155,29 @@ function MonthNav({ value, onChange }) {
         cursor: "pointer", padding: "2px 8px", lineHeight: 1 }}>‹</button>
       <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 17,
         fontWeight: 600, color: C.dark }}>{getMonthLabel(value)}</span>
-      <button onClick={() => onChange(adjMonth(value, 1))} disabled={value >= now} style={{
+      <button onClick={() => onChange(adjMonth(value, 1))} disabled={value >= lastMonth} style={{
         background: "none", border: "none", fontSize: 22,
-        color: value >= now ? C.border : C.accent,
-        cursor: value >= now ? "default" : "pointer", padding: "2px 8px", lineHeight: 1 }}>›</button>
+        color: value >= lastMonth ? C.border : C.accent,
+        cursor: value >= lastMonth ? "default" : "pointer", padding: "2px 8px", lineHeight: 1 }}>›</button>
     </div>
   );
 }
 
-function StatCard({ label, value, sub, color, accent }) {
+function StatCard({ label, value, sub, color, accent, onClick }) {
   return (
-    <div style={{ background: C.card, borderRadius: 16, padding: "14px 15px",
+    <div onClick={onClick} style={{ background: C.card, borderRadius: 16, padding: "14px 15px",
       boxShadow: "0 1px 10px rgba(44,24,16,.06)",
-      borderTop: accent ? `3px solid ${accent}` : undefined }}>
+      borderTop: accent ? `3px solid ${accent}` : undefined,
+      cursor: onClick ? "pointer" : "default",
+      transition: onClick ? "opacity .15s" : undefined }}
+      onMouseEnter={e => { if (onClick) e.currentTarget.style.opacity = ".85"; }}
+      onMouseLeave={e => { if (onClick) e.currentTarget.style.opacity = "1"; }}>
       <div style={{ fontSize: 9, color: C.light, fontWeight: 700, letterSpacing: 1,
         textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
       <div style={{ fontSize: 19, fontWeight: 700, color: color || C.dark,
         fontFamily: "'Cormorant Garamond', serif" }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>{sub}</div>}
+      {onClick && <div style={{ fontSize: 9, color: C.light, marginTop: 4 }}>tap to view →</div>}
     </div>
   );
 }
@@ -214,12 +225,24 @@ function PhotoUpload({ photos, onChange }) {
 }
 
 function PhotoStrip({ photos }) {
-  if (!photos?.length) return null;
+  if (!(photos || []).length) return null;
+  const download = (src, i) => {
+    const a = document.createElement("a");
+    a.href = src;
+    a.download = `photo-${i + 1}.jpg`;
+    a.click();
+  };
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
       {photos.map((src, i) => (
-        <img key={i} src={src} alt="" style={{ width: 56, height: 56, objectFit: "cover",
-          borderRadius: 8, border: `1px solid ${C.border}` }} />
+        <div key={i} style={{ position: "relative" }}>
+          <img src={src} alt="" style={{ width: 72, height: 72, objectFit: "cover",
+            borderRadius: 8, border: `1px solid ${C.border}`, display: "block" }} />
+          <button onClick={e => { e.stopPropagation(); download(src, i); }} title="Download"
+            style={{ position: "absolute", bottom: 0, right: 0, background: "rgba(0,0,0,.55)",
+              color: "#fff", border: "none", borderRadius: "0 0 8px 0",
+              padding: "3px 5px", cursor: "pointer", fontSize: 11, lineHeight: 1 }}>↓</button>
+        </div>
       ))}
     </div>
   );
@@ -266,7 +289,7 @@ function AddPurchaseModal({ onClose, onSave }) {
 
   return (
     <ModalSheet onClose={onClose} title="Add Purchase">
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", minWidth: 0 }}>
 
         <div>
           <Label>Purpose</Label>
@@ -399,7 +422,7 @@ function AddSaleModal({ onClose, onSave, inventory }) {
 
   return (
     <ModalSheet onClose={onClose} title="Record a Sale">
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", minWidth: 0 }}>
 
         <div>
           <Label>Item Sold</Label>
@@ -460,7 +483,7 @@ function AddSaleModal({ onClose, onSave, inventory }) {
 
 // ── HOME TAB ──────────────────────────────────────
 
-function HomeTab({ data, month, setMonth }) {
+function HomeTab({ data, month, setMonth, setTab }) {
   const mPurchases = data.purchases.filter(p => monthOf(p.date) === month);
   const mSales     = data.sales.filter(s => monthOf(s.date) === month);
   const inventory  = data.purchases.filter(p => !p.sold);
@@ -499,23 +522,24 @@ function HomeTab({ data, month, setMonth }) {
       <div className="page-header-center">
         <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 26, fontWeight: 700,
           color: C.dark, margin: 0, letterSpacing: 0.5 }}>✦ Shop Ledger</h1>
-        <div style={{ fontSize: 10, color: C.light, marginTop: 3, letterSpacing: 1.5 }}>VINTAGE · HANDMADE</div>
+        <div style={{ fontSize: 10, color: C.light, marginTop: 3, letterSpacing: 1.5 }}>UNIQUE · HANDMADE</div>
       </div>
 
       <MonthNav value={month} onChange={setMonth} />
 
       <div className="stats-grid">
         <StatCard label="For Sale — Bought" value={fmt(forSaleCost)}
-          sub={`${forSaleBought.length} item${forSaleBought.length !== 1 ? "s" : ""}`} accent={C.accent} />
+          sub={`${forSaleBought.length} item${forSaleBought.length !== 1 ? "s" : ""}`}
+          accent={C.accent} onClick={() => setTab("purchases")} />
         <StatCard label="Revenue" value={fmt(revenue)}
-          sub={`${mSales.length} sold`} accent={C.sage} />
+          sub={`${mSales.length} sold`} accent={C.sage} onClick={() => setTab("sales")} />
         <StatCard label="Profit" value={fmt(profit)}
           color={profit > 0 ? C.sage : profit < 0 ? C.error : C.mid}
           sub={profit > 0 ? "net gain ✓" : profit < 0 ? "net loss" : "break even"}
-          accent={profit >= 0 ? C.sage : C.error} />
+          accent={profit >= 0 ? C.sage : C.error} onClick={() => setTab("sales")} />
         <StatCard label="Self-Own — Spent" value={fmt(selfOwnCost)}
           sub={`${selfOwnBought.length} item${selfOwnBought.length !== 1 ? "s" : ""}`}
-          color={C.purple} accent={C.purple} />
+          color={C.purple} accent={C.purple} onClick={() => setTab("purchases")} />
       </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
@@ -523,13 +547,15 @@ function HomeTab({ data, month, setMonth }) {
           { icon: "🏷️", count: forSaleStock.length, label: "for sale in stock", color: C.accent },
           { icon: "💜", count: selfOwnStock.length, label: "kept for self", color: C.purple },
         ].map(({ icon, count, label, color }) => (
-          <div key={label} style={{ flex: 1, background: C.card, borderRadius: 12,
+          <div key={label} onClick={() => setTab("inventory")} style={{ flex: 1, background: C.card, borderRadius: 12,
             padding: "10px 14px", boxShadow: "0 1px 8px rgba(44,24,16,.05)",
-            display: "flex", alignItems: "center", gap: 8 }}>
+            display: "flex", alignItems: "center", gap: 8, cursor: "pointer", transition: "opacity .15s" }}
+            onMouseEnter={e => e.currentTarget.style.opacity = ".85"}
+            onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
             <span style={{ fontSize: 16 }}>{icon}</span>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color }}>{count} items</div>
-              <div style={{ fontSize: 10, color: C.light }}>{label}</div>
+              <div style={{ fontSize: 10, color: C.light }}>{label} · tap to view →</div>
             </div>
           </div>
         ))}
@@ -610,9 +636,115 @@ function HomeTab({ data, month, setMonth }) {
   );
 }
 
+// ── EDIT PURCHASE MODAL ───────────────────────────
+
+function EditPurchaseModal({ item, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name:     item.name     ?? "",
+    category: item.category ?? "vintage",
+    intent:   item.intent   ?? "for_sale",
+    cost:     item.cost     ?? "",
+    source:   SOURCES.includes(item.source) ? item.source : SOURCES[0],
+    isNew:    item.isNew    ?? false,
+    date:     item.date     ?? today(),
+    notes:    item.notes    ?? "",
+    photos:   item.photos   ?? [],
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const save = () => {
+    if (!form.name.trim()) return alert("Please enter an item name.");
+    if (!form.cost || isNaN(+form.cost) || +form.cost <= 0) return alert("Please enter a valid cost.");
+    onSave({ ...item, ...form, cost: +form.cost });
+  };
+
+  return (
+    <ModalSheet onClose={onClose} title="Edit Item">
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", minWidth: 0 }}>
+        <div>
+          <Label>Purpose</Label>
+          <div style={{ display: "flex", gap: 10 }}>
+            {Object.entries(INTENT).map(([k, i]) => (
+              <button key={k} onClick={() => set("intent", k)} style={{
+                flex: 1, padding: "14px 8px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+                border: `2px solid ${form.intent === k ? i.color : C.border}`,
+                background: form.intent === k ? i.bg : "#fff",
+                color: form.intent === k ? i.color : C.mid,
+                fontSize: 13, fontWeight: 700, display: "flex", flexDirection: "column",
+                alignItems: "center", gap: 5, transition: "all .15s",
+              }}>
+                <span style={{ fontSize: 22 }}>{i.emoji}</span>{i.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <Label>Item Name</Label>
+          <input value={form.name} onChange={e => set("name", e.target.value)}
+            placeholder="e.g. Levi's 501 Jeans" style={inputSt} />
+        </div>
+        <div>
+          <Label>Category</Label>
+          <div style={{ display: "flex", gap: 8 }}>
+            {Object.entries(CATS).map(([k, c]) => (
+              <button key={k} onClick={() => set("category", k)} style={{
+                flex: 1, padding: "10px 4px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                border: `2px solid ${form.category === k ? c.color : C.border}`,
+                background: form.category === k ? c.bg : "#fff",
+                color: form.category === k ? c.color : C.mid,
+                fontSize: 10, fontWeight: 700, display: "flex", flexDirection: "column",
+                alignItems: "center", gap: 3, transition: "all .15s",
+              }}>
+                <span style={{ fontSize: 20 }}>{c.emoji}</span>{c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <Label>Cost (NT$)</Label>
+          <input type="number" value={form.cost} onChange={e => set("cost", e.target.value)}
+            placeholder="0" min="0" style={inputSt} />
+        </div>
+        <div>
+          <Label>Source</Label>
+          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)} />
+        </div>
+        {form.category !== "handmade" && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: "#fff", borderRadius: 12, padding: "12px 14px", border: `1.5px solid ${C.border}` }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.dark }}>Brand New</div>
+              <div style={{ fontSize: 11, color: C.light }}>Toggle off if secondhand</div>
+            </div>
+            <Toggle value={form.isNew} onChange={v => set("isNew", v)} />
+          </div>
+        )}
+        <div>
+          <Label>Date Purchased</Label>
+          <input type="date" value={form.date} onChange={e => set("date", e.target.value)} style={inputSt} />
+        </div>
+        <div>
+          <Label>Notes (optional)</Label>
+          <textarea value={form.notes} onChange={e => set("notes", e.target.value)}
+            placeholder="Brand, size, condition…" rows={2} style={{ ...inputSt, resize: "none" }} />
+        </div>
+        <div>
+          <Label>Photos (up to 5)</Label>
+          <PhotoUpload photos={form.photos} onChange={v => set("photos", v)} />
+        </div>
+        <button onClick={save} style={{
+          background: form.intent === "self_own" ? C.purple : C.accent,
+          color: "#fff", border: "none", borderRadius: 14, padding: "15px",
+          fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+        }}>Save Changes</button>
+      </div>
+    </ModalSheet>
+  );
+}
+
 // ── PURCHASE CARD ─────────────────────────────────
 
-function PurchaseCard({ item, onDelete }) {
+function PurchaseCard({ item, onDelete, onEdit }) {
   const [open, setOpen] = useState(false);
   const borderColor = item.intent === "self_own" ? C.purple : CATS[item.category]?.color || C.accent;
   return (
@@ -622,13 +754,13 @@ function PurchaseCard({ item, onDelete }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 700, color: C.dark, fontSize: 15 }}>{item.name}</span>
+            <span style={{ fontWeight: 700, color: C.dark, fontSize: 15 }}>{item.name || "—"}</span>
             {item.sold && <span style={{ fontSize: 10, background: C.sageBg, color: C.sage,
               padding: "1px 7px", borderRadius: 10, fontWeight: 700 }}>Sold</span>}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            <IntentBadge intent={item.intent} />
-            <CatBadge cat={item.category} />
+            <IntentBadge intent={item.intent || "for_sale"} />
+            <CatBadge cat={item.category || "vintage"} />
             {!item.isNew && item.category !== "handmade" &&
               <span style={{ fontSize: 10, background: "#F2E8E3", color: C.mid,
                 padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>2nd Hand</span>}
@@ -640,18 +772,25 @@ function PurchaseCard({ item, onDelete }) {
         </div>
       </div>
       {open && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-          <PhotoStrip photos={item.photos} />
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}
+          onClick={e => e.stopPropagation()}>
+          <PhotoStrip photos={item.photos || []} />
           <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.9 }}>
-            <div>📍 Source: {item.source}</div>
-            {item.notes && <div>📝 {item.notes}</div>}
+            {item.source && <div>📍 Source: {item.source}</div>}
+            {item.notes  && <div>📝 {item.notes}</div>}
           </div>
-          {!item.sold && (
-            <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{
-              marginTop: 10, fontSize: 12, color: C.error, background: "#FEE9E7",
-              border: `1px solid #F5C2BB`, borderRadius: 8, padding: "6px 16px",
-              cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
-          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button onClick={() => onEdit(item)} style={{
+              fontSize: 12, color: C.accent, background: "#FDF0E8",
+              border: `1px solid ${C.accent}`, borderRadius: 8, padding: "6px 16px",
+              cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
+            {!item.sold && (
+              <button onClick={() => { if (confirm(`Delete "${item.name}"?`)) onDelete(item.id); }} style={{
+                fontSize: 12, color: C.error, background: "#FEE9E7",
+                border: `1px solid #F5C2BB`, borderRadius: 8, padding: "6px 16px",
+                cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -660,13 +799,18 @@ function PurchaseCard({ item, onDelete }) {
 
 // ── PURCHASES TAB ─────────────────────────────────
 
-function PurchasesTab({ data, month, setMonth, onDelete, onAdd }) {
+function PurchasesTab({ data, month, setMonth, onDelete, onEdit, onAdd }) {
   const [filter, setFilter] = useState("all");
-  const allItems = data.purchases.filter(p => monthOf(p.date) === month);
-  const shown = filter === "all" ? allItems : allItems.filter(p => p.intent === filter);
+  const [editingItem, setEditingItem] = useState(null);
+  const monthItems = data.purchases.filter(p => monthOf(p.date) === month);
+  const shown      = filter === "all" ? monthItems : monthItems.filter(p => p.intent === filter);
+  const latestPurchaseMonth = data.purchases.reduce((latest, p) => {
+    const purchaseMonth = monthOf(p.date);
+    return purchaseMonth > latest ? purchaseMonth : latest;
+  }, today().slice(0, 7));
 
-  const forSaleTotal = allItems.filter(p => p.intent === "for_sale").reduce((a, p) => a + +p.cost, 0);
-  const selfOwnTotal = allItems.filter(p => p.intent === "self_own").reduce((a, p) => a + +p.cost, 0);
+  const forSaleTotal = monthItems.filter(p => p.intent === "for_sale").reduce((a, p) => a + +(p.cost||0), 0);
+  const selfOwnTotal = monthItems.filter(p => p.intent === "self_own").reduce((a, p) => a + +(p.cost||0), 0);
 
   return (
     <div className="tab-content">
@@ -681,13 +825,13 @@ function PurchasesTab({ data, month, setMonth, onDelete, onAdd }) {
           cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}>＋ Add</button>
       </div>
 
-      <MonthNav value={month} onChange={setMonth} />
+      <MonthNav value={month} onChange={setMonth} maxMonth={latestPurchaseMonth} />
 
       <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
         {[
-          { id: "all",      label: `All (${allItems.length})` },
-          { id: "for_sale", label: `🏷️ (${allItems.filter(p=>p.intent==="for_sale").length})` },
-          { id: "self_own", label: `💜 (${allItems.filter(p=>p.intent==="self_own").length})` },
+          { id: "all",      label: `All (${monthItems.length})` },
+          { id: "for_sale", label: `🏷️ (${monthItems.filter(p=>p.intent==="for_sale").length})` },
+          { id: "self_own", label: `💜 (${monthItems.filter(p=>p.intent==="self_own").length})` },
         ].map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)} style={{
             padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 11,
@@ -699,7 +843,7 @@ function PurchasesTab({ data, month, setMonth, onDelete, onAdd }) {
         ))}
       </div>
 
-      {allItems.length > 0 && (
+      {monthItems.length > 0 && (
         <div style={{ background: C.card, borderRadius: 12, padding: "11px 16px",
           marginBottom: 12, boxShadow: "0 1px 6px rgba(44,24,16,.05)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
@@ -714,10 +858,10 @@ function PurchasesTab({ data, month, setMonth, onDelete, onAdd }) {
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {[...shown].sort((a, b) => b.date.localeCompare(a.date)).map(p => (
-          <PurchaseCard key={p.id} item={p} onDelete={() => {
-            if (confirm(`Delete "${p.name}"?`)) onDelete(p.id);
-          }} />
+        {[...shown].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map(p => (
+          <PurchaseCard key={p.id} item={p}
+            onDelete={onDelete}
+            onEdit={setEditingItem} />
         ))}
       </div>
 
@@ -727,56 +871,291 @@ function PurchasesTab({ data, month, setMonth, onDelete, onAdd }) {
           <div style={{ fontSize: 14, color: C.mid, marginTop: 10 }}>No purchases this month.</div>
         </div>
       )}
+
+      {editingItem && (
+        <EditPurchaseModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSave={updated => { onEdit(updated); setEditingItem(null); }}
+        />
+      )}
     </div>
+  );
+}
+
+// ── EDIT SALE MODAL ───────────────────────────────
+
+function EditSaleModal({ item, onClose, onSave }) {
+  const [form, setForm] = useState({
+    salePrice: item.salePrice ?? "",
+    platform:  PLATFORMS.includes(item.platform) ? item.platform : PLATFORMS[0],
+    date:      item.date  ?? today(),
+    notes:     item.notes ?? "",
+    photos:    item.photos ?? [],
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const profit = item.cost && form.salePrice ? +form.salePrice - +item.cost : null;
+
+  const save = () => {
+    if (!form.salePrice || isNaN(+form.salePrice) || +form.salePrice <= 0)
+      return alert("Please enter a valid sale price.");
+    onSave({ ...item, ...form, salePrice: +form.salePrice });
+  };
+
+  return (
+    <ModalSheet onClose={onClose} title="Edit Sale">
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", minWidth: 0 }}>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px",
+          border: `1.5px solid ${C.border}`, fontSize: 13, color: C.mid }}>
+          <span style={{ fontWeight: 700, color: C.dark }}>{item.name}</span>
+          <span style={{ marginLeft: 8 }}><CatBadge cat={item.category} /></span>
+        </div>
+        <div>
+          <Label>Sale Price (NT$)</Label>
+          <input type="number" value={form.salePrice} onChange={e => set("salePrice", e.target.value)}
+            placeholder="0" min="0" style={inputSt} />
+          {profit !== null && (
+            <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700,
+              color: profit >= 0 ? C.sage : C.error }}>
+              {profit >= 0 ? "▲" : "▼"} Profit: {fmt(profit)}
+            </div>
+          )}
+        </div>
+        <div>
+          <Label>Platform</Label>
+          <ChipRow options={PLATFORMS} value={form.platform} onChange={v => set("platform", v)}
+            activeColor={C.sage} activeBg={C.sageBg} />
+        </div>
+        <div>
+          <Label>Date Sold</Label>
+          <input type="date" value={form.date} onChange={e => set("date", e.target.value)} style={inputSt} />
+        </div>
+        <div>
+          <Label>Notes (optional)</Label>
+          <textarea value={form.notes} onChange={e => set("notes", e.target.value)}
+            rows={2} style={{ ...inputSt, resize: "none" }} />
+        </div>
+        <div>
+          <Label>Photos (up to 5)</Label>
+          <PhotoUpload photos={form.photos} onChange={v => set("photos", v)} />
+        </div>
+        <button onClick={save} style={{ background: C.sage, color: "#fff", border: "none",
+          borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 700,
+          cursor: "pointer", fontFamily: "inherit" }}>Save Changes</button>
+      </div>
+    </ModalSheet>
   );
 }
 
 // ── SALE CARD ─────────────────────────────────────
 
-function SaleCard({ item, onDelete }) {
+function SaleCard({ item, onDelete, onEdit }) {
   const [open, setOpen] = useState(false);
-  const profit = +item.salePrice - +(item.cost || 0);
+  const profit   = +item.salePrice - +(item.cost || 0);
+  const dateAdded = item.dateAdded || item.forSaleDate || item.buyDate;
+  const keptDays = daysBetween(dateAdded, item.date);
+  const profitColor = profit > 0 ? C.sage : profit < 0 ? C.error : C.mid;
   return (
     <div onClick={() => setOpen(o => !o)} style={{ background: C.card, borderRadius: 14,
       padding: "14px 16px", boxShadow: "0 1px 8px rgba(44,24,16,.05)",
-      borderLeft: `3px solid ${C.sage}`, cursor: "pointer" }}>
+      borderLeft: `3px solid ${profitColor}`, cursor: "pointer" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, color: C.dark, fontSize: 15, marginBottom: 5 }}>{item.name}</div>
-          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 10, background: "#F7EFE8", color: C.mid,
+              padding: "2px 8px", borderRadius: 20, fontWeight: 700, whiteSpace: "nowrap" }}>
+              Price {fmt(item.salePrice)}
+            </span>
             <CatBadge cat={item.category} />
             <span style={{ fontSize: 10, background: C.sageBg, color: C.sage,
               padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>{item.platform}</span>
           </div>
         </div>
         <div style={{ textAlign: "right", paddingLeft: 10, flexShrink: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: C.sage }}>{fmt(item.salePrice)}</div>
-          <div style={{ fontSize: 11, color: C.light, marginTop: 2 }}>{fmtDate(item.date)}</div>
+          <div style={{ fontSize: 9, color: C.light, fontWeight: 700, letterSpacing: 1,
+            textTransform: "uppercase" }}>Profit</div>
+          <div style={{ fontWeight: 800, fontSize: 17, color: profitColor, whiteSpace: "nowrap" }}>
+            {profit >= 0 ? "▲" : "▼"} {fmt(Math.abs(profit))}
+          </div>
+          <div style={{ fontSize: 10, color: C.light, marginTop: 1 }}>{fmtDate(item.date)}</div>
         </div>
       </div>
       {open && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-          <PhotoStrip photos={item.photos} />
-          <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.9 }}>
-            <div>💰 Cost: {fmt(item.cost)} · Profit:{" "}
-              <span style={{ fontWeight: 700, color: profit >= 0 ? C.sage : C.error }}>{fmt(profit)}</span>
-            </div>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}
+          onClick={e => e.stopPropagation()}>
+          <PhotoStrip photos={item.photos || []} />
+          <div style={{ fontSize: 12, color: C.mid, lineHeight: 2 }}>
+            <div>💸 Cost: <strong style={{ color: C.accent }}>{fmt(item.cost)}</strong></div>
+            <div>🏷️ Price: <strong style={{ color: C.sage }}>{fmt(item.salePrice)}</strong></div>
+            <div>📦 Date Added: <strong>{dateAdded ? fmtDate(dateAdded) : "Not available"}</strong></div>
+            <div>⏱ Days Kept: <strong>{keptDays !== null
+              ? `${keptDays} day${keptDays !== 1 ? "s" : ""}`
+              : "Not available"}</strong></div>
             {item.notes && <div>📝 {item.notes}</div>}
           </div>
-          <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{
-            marginTop: 10, fontSize: 12, color: C.error, background: "#FEE9E7",
-            border: `1px solid #F5C2BB`, borderRadius: 8, padding: "6px 16px",
-            cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button onClick={() => onEdit(item)} style={{
+              fontSize: 12, color: C.sage, background: C.sageBg,
+              border: `1px solid ${C.sage}`, borderRadius: 8, padding: "6px 16px",
+              cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
+            <button onClick={() => { if (confirm(`Delete sale of "${item.name}"?`)) onDelete(item.id); }} style={{
+              fontSize: 12, color: C.error, background: "#FEE9E7",
+              border: `1px solid #F5C2BB`, borderRadius: 8, padding: "6px 16px",
+              cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
+// ── SALES CHARTS ─────────────────────────────────
+
+const CHART_COLORS = ["#C17553", "#4A7C59", "#7B68C8", "#D4845A", "#6B9E8A", "#B8A4E8"];
+
+function SalesCharts({ sales }) {
+  const [idx, setIdx] = useState(0);
+  const [touchX, setTouchX] = useState(null);
+
+  const go = (n) => setIdx(Math.max(0, Math.min(1, n)));
+
+  const byPlatform = {};
+  sales.forEach(s => {
+    const p = s.platform || "Other";
+    if (!byPlatform[p]) byPlatform[p] = { revenue: 0, profit: 0 };
+    byPlatform[p].revenue += +s.salePrice || 0;
+    byPlatform[p].profit  += (+s.salePrice || 0) - (+s.cost || 0);
+  });
+
+  const totalRevenue = sales.reduce((a, s) => a + (+s.salePrice || 0), 0);
+  const totalProfit  = sales.reduce((a, s) => a + (+s.salePrice || 0) - (+s.cost || 0), 0);
+
+  const charts = [
+    {
+      title: "Revenue", total: totalRevenue, totalColor: C.sage,
+      data: Object.entries(byPlatform)
+        .map(([name, v]) => ({ name, value: v.revenue }))
+        .filter(d => d.value > 0).sort((a, b) => b.value - a.value),
+    },
+    {
+      title: "Profit", total: totalProfit, totalColor: totalProfit >= 0 ? C.sage : C.error,
+      data: Object.entries(byPlatform)
+        .map(([name, v]) => ({ name, value: v.profit }))
+        .filter(d => d.value > 0).sort((a, b) => b.value - a.value),
+    },
+  ];
+
+  const current = charts[idx];
+
+  return (
+    <div style={{ background: C.card, borderRadius: 16, marginBottom: 14,
+      boxShadow: "0 1px 10px rgba(44,24,16,.06)", overflow: "hidden" }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "14px 16px 0" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 15,
+            fontWeight: 600, color: C.dark }}>{current.title} by Platform</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: current.totalColor }}>
+            {fmt(current.total)}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          {charts.map((_, i) => (
+            <div key={i} onClick={() => go(i)} style={{
+              width: i === idx ? 16 : 6, height: 6, borderRadius: 3, cursor: "pointer",
+              background: i === idx ? C.accent : C.border, transition: "all .2s",
+            }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Swipeable slides */}
+      <div style={{ overflow: "hidden" }}
+        onTouchStart={e => setTouchX(e.touches[0].clientX)}
+        onTouchEnd={e => {
+          if (touchX === null) return;
+          const dx = touchX - e.changedTouches[0].clientX;
+          if (Math.abs(dx) > 40) go(idx + (dx > 0 ? 1 : -1));
+          setTouchX(null);
+        }}>
+        <div style={{ display: "flex", transform: `translateX(-${idx * 100}%)`,
+          transition: "transform .3s ease" }}>
+          {charts.map((chart, ci) => (
+            <div key={ci} style={{ minWidth: "100%", padding: "10px 16px 14px",
+              display: "flex", alignItems: "center", gap: 4 }}>
+              {chart.data.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="44%" height={130}>
+                    <PieChart>
+                      <Pie data={chart.data} cx="50%" cy="50%"
+                        innerRadius={28} outerRadius={52} paddingAngle={2} dataKey="value">
+                        {chart.data.map((_, i) => (
+                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    {chart.data.map((entry, i) => {
+                      const pct = chart.total > 0
+                        ? Math.round(entry.value / chart.total * 100) : 0;
+                      return (
+                        <div key={i} style={{ display: "flex", alignItems: "center",
+                          gap: 5, marginBottom: 6 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%",
+                            flexShrink: 0, background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                          <span style={{ fontSize: 10, color: C.mid, flex: 1,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {entry.name}
+                          </span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: C.dark,
+                            flexShrink: 0 }}>{pct}%</span>
+                          <span style={{ fontSize: 10, color: C.light, flexShrink: 0,
+                            marginLeft: 3 }}>{fmt(entry.value)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div style={{ width: "100%", textAlign: "center", padding: "28px 0",
+                  fontSize: 12, color: C.light }}>No positive {chart.title.toLowerCase()} this month</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab strip */}
+      <div style={{ display: "flex", borderTop: `1px solid ${C.border}` }}>
+        {charts.map((chart, i) => (
+          <button key={i} onClick={() => go(i)} style={{
+            flex: 1, padding: "8px 0", background: "none", border: "none",
+            borderBottom: i === idx ? `2px solid ${C.accent}` : "2px solid transparent",
+            cursor: "pointer", fontSize: 11, fontFamily: "inherit",
+            fontWeight: i === idx ? 700 : 400,
+            color: i === idx ? C.accent : C.light, transition: "all .15s",
+          }}>{chart.title}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── SALES TAB ─────────────────────────────────────
 
-function SalesTab({ data, month, setMonth, onDelete, onAdd, inventory }) {
+function SalesTab({ data, month, setMonth, onDelete, onEdit, onAdd }) {
+  const [editingSale, setEditingSale] = useState(null);
   const sales    = data.sales.filter(s => monthOf(s.date) === month);
+  const salesWithDates = sales.map(s => {
+    if (s.dateAdded || s.buyDate) return s;
+    const purchase = data.purchases.find(p => p.id === s.purchaseId);
+    const dateAdded = purchase?.dateAdded || purchase?.forSaleDate || purchase?.date;
+    return dateAdded ? { ...s, dateAdded, buyDate: dateAdded } : s;
+  });
   const revenue  = sales.reduce((a, s) => a + +s.salePrice, 0);
   const soldCost = sales.reduce((a, s) => a + +(s.cost || 0), 0);
   const profit   = revenue - soldCost;
@@ -817,11 +1196,11 @@ function SalesTab({ data, month, setMonth, onDelete, onAdd, inventory }) {
         </div>
       )}
 
+      {sales.length > 0 && <SalesCharts sales={sales} />}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {[...sales].sort((a, b) => b.date.localeCompare(a.date)).map(s => (
-          <SaleCard key={s.id} item={s} onDelete={() => {
-            if (confirm(`Delete sale of "${s.name}"?`)) onDelete(s.id);
-          }} />
+        {[...salesWithDates].sort((a, b) => (b.date||"").localeCompare(a.date||"")).map(s => (
+          <SaleCard key={s.id} item={s} onDelete={onDelete} onEdit={setEditingSale} />
         ))}
       </div>
 
@@ -829,6 +1208,60 @@ function SalesTab({ data, month, setMonth, onDelete, onAdd, inventory }) {
         <div style={{ textAlign: "center", padding: "52px 20px" }}>
           <div style={{ fontSize: 40 }}>🏷️</div>
           <div style={{ fontSize: 14, color: C.mid, marginTop: 10 }}>No sales recorded this month.</div>
+        </div>
+      )}
+
+      {editingSale && (
+        <EditSaleModal
+          item={editingSale}
+          onClose={() => setEditingSale(null)}
+          onSave={updated => { onEdit(updated); setEditingSale(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── WARDROBE CARD ─────────────────────────────────
+
+function WardrobeCard({ item }) {
+  const [open, setOpen] = useState(false);
+  const borderColor = item.intent === "self_own" ? C.purple : CATS[item.category]?.color || C.accent;
+  const days  = daysSince(item.date || today());
+  const isOld = days > 30 && item.intent === "for_sale";
+  return (
+    <div onClick={() => setOpen(o => !o)} style={{ background: C.card, borderRadius: 14,
+      padding: "14px 16px", boxShadow: "0 1px 8px rgba(44,24,16,.05)",
+      borderLeft: `3px solid ${borderColor}`, cursor: "pointer" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, color: C.dark, fontSize: 15, marginBottom: 5 }}>
+            {item.name || "—"}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            <IntentBadge intent={item.intent || "for_sale"} />
+            <CatBadge cat={item.category || "vintage"} />
+            {!item.isNew && item.category !== "handmade" &&
+              <span style={{ fontSize: 10, background: "#F2E8E3", color: C.mid,
+                padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>2nd Hand</span>}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", paddingLeft: 10, flexShrink: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: borderColor }}>{fmt(item.cost)}</div>
+          <div style={{ fontSize: 11, color: C.light, marginTop: 2 }}>{fmtDate(item.date)}</div>
+        </div>
+      </div>
+      {open && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}
+          onClick={e => e.stopPropagation()}>
+          <PhotoStrip photos={item.photos || []} />
+          <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.9 }}>
+            {item.source && <div>📍 Source: {item.source}</div>}
+            <div style={{ color: isOld ? C.error : C.mid }}>
+              🕑 {days}d in wardrobe{isOld ? " ⚠️ consider repricing" : ""}
+            </div>
+            {item.notes && <div>📝 {item.notes}</div>}
+          </div>
         </div>
       )}
     </div>
@@ -857,9 +1290,9 @@ function WardrobeTab({ inventory }) {
         <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
           {[
             { label: "For Sale", count: forSale.length,
-              value: fmt(forSale.reduce((a,p)=>a+ +p.cost,0)), color: C.accent },
+              value: fmt(forSale.reduce((a,p) => a + +(p.cost||0), 0)), color: C.accent },
             { label: "Self-Own", count: selfOwn.length,
-              value: fmt(selfOwn.reduce((a,p)=>a+ +p.cost,0)), color: C.purple },
+              value: fmt(selfOwn.reduce((a,p) => a + +(p.cost||0), 0)), color: C.purple },
           ].map(({ label, count, value, color }) => (
             <div key={label} style={{ flex: 1, background: C.card, borderRadius: 12,
               padding: "12px 14px", boxShadow: "0 1px 6px rgba(44,24,16,.05)",
@@ -877,8 +1310,8 @@ function WardrobeTab({ inventory }) {
       <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
         {[
           { id: "all",      label: `All (${inventory.length})` },
-          { id: "for_sale", label: `🏷️ For Sale` },
-          { id: "self_own", label: `💜 Self-Own` },
+          { id: "for_sale", label: `🏷️ (${forSale.length})` },
+          { id: "self_own", label: `💜 (${selfOwn.length})` },
         ].map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)} style={{
             padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 11,
@@ -890,41 +1323,10 @@ function WardrobeTab({ inventory }) {
         ))}
       </div>
 
-      <div className="wardrobe-grid">
-        {[...shown].sort((a, b) => a.date.localeCompare(b.date)).map(p => {
-          const days = daysSince(p.date);
-          const isOld = days > 30 && p.intent === "for_sale";
-          const bc = p.intent === "self_own" ? C.purple : CATS[p.category]?.color || C.accent;
-          const thumb = p.photos?.[0];
-          return (
-            <div key={p.id} style={{ background: C.card, borderRadius: 14, padding: "14px 16px",
-              boxShadow: "0 1px 8px rgba(44,24,16,.05)", borderLeft: `3px solid ${bc}` }}>
-              {thumb && (
-                <img src={thumb} alt="" style={{ width: "100%", height: 120, objectFit: "cover",
-                  borderRadius: 10, marginBottom: 10, border: `1px solid ${C.border}` }} />
-              )}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: C.dark, marginBottom: 5 }}>{p.name}</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 }}>
-                    <IntentBadge intent={p.intent} />
-                    <CatBadge cat={p.category} />
-                    {!p.isNew && p.category !== "handmade" &&
-                      <span style={{ fontSize: 10, background: "#F2E8E3", color: C.mid,
-                        padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>2nd Hand</span>}
-                  </div>
-                  <div style={{ fontSize: 11, color: isOld ? C.error : C.light }}>
-                    📍 {p.source} · {days}d ago{isOld ? " ⚠️" : ""}
-                  </div>
-                </div>
-                <div style={{ textAlign: "right", paddingLeft: 10, flexShrink: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: bc }}>{fmt(p.cost)}</div>
-                  <div style={{ fontSize: 11, color: C.light, marginTop: 2 }}>{fmtDate(p.date)}</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {[...shown].sort((a, b) => (a.date || "").localeCompare(b.date || "")).map(p => (
+          <WardrobeCard key={p.id} item={p} />
+        ))}
       </div>
 
       {shown.length === 0 && (
@@ -953,7 +1355,7 @@ function SideNav({ tab, setTab }) {
       <div style={{ padding: "0 24px 24px", borderBottom: `1px solid ${C.border}`, marginBottom: 12 }}>
         <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 20,
           fontWeight: 700, color: C.dark }}>✦ Shop Ledger</div>
-        <div style={{ fontSize: 10, color: C.light, letterSpacing: 1.5, marginTop: 2 }}>VINTAGE · HANDMADE</div>
+        <div style={{ fontSize: 10, color: C.light, letterSpacing: 1.5, marginTop: 2 }}>UNIQUE · HANDMADE</div>
       </div>
       {tabs.map(t => (
         <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -1006,27 +1408,92 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [month, setMonth] = useState(() => today().slice(0, 7));
 
+  const [localBackup, setLocalBackup] = useState(null);
+
   useEffect(() => {
-    loadData().then(d => { setData(d); setReady(true); });
+    const checkLocal = () => {
+      try {
+        const raw = localStorage.getItem("vintage-shop-v2");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const hasData = (parsed.purchases?.length || 0) + (parsed.sales?.length || 0) > 0;
+          if (hasData) setLocalBackup(parsed);
+        }
+      } catch {
+        // Ignore malformed local backup data.
+      }
+    };
+
+    const unsub = onSnapshot(SHOP_REF, (snap) => {
+      if (snap.exists()) {
+        setData(snap.data());
+        setLocalBackup(null);
+      } else {
+        checkLocal();
+        setData(EMPTY);
+      }
+      setReady(true);
+    }, () => {
+      // Firestore failed (e.g. rules not set) — still check local data
+      checkLocal();
+      setReady(true);
+    });
+    return unsub;
   }, []);
 
-  const update = useCallback((nd) => { setData(nd); saveData(nd); }, []);
+  const update = useCallback((nd) => {
+    setData(nd);
+    setDoc(SHOP_REF, nd);
+  }, []);
+
+  const migrateLocalData = useCallback(() => {
+    if (!localBackup) return;
+    update(localBackup);
+    localStorage.removeItem("vintage-shop-v2");
+    setLocalBackup(null);
+  }, [localBackup, update]);
 
   const addPurchase = useCallback((p) => {
-    update({ ...data, purchases: [...data.purchases, { ...p, id: uid(), sold: false }] });
+    const purchase = { ...p, id: uid(), sold: false };
+    if (purchase.intent === "for_sale") purchase.dateAdded = today();
+    update({ ...data, purchases: [...data.purchases, purchase] });
     setModal(null);
   }, [data, update]);
 
   const addSale = useCallback((s) => {
+    const purchase = data.purchases.find(p => p.id === s.purchaseId);
+    const dateAdded = purchase?.dateAdded || purchase?.forSaleDate || purchase?.date;
     update({
-      purchases: data.purchases.map(p => p.id === s.purchaseId ? { ...p, sold: true } : p),
-      sales: [...data.sales, { ...s, id: uid() }],
+      purchases: data.purchases.map(p =>
+        p.id === s.purchaseId ? { ...p, sold: true, photos: [] } : p
+      ),
+      sales: [...data.sales, { ...s, id: uid(), buyDate: dateAdded, dateAdded }],
     });
     setModal(null);
   }, [data, update]);
 
+  const editPurchase = useCallback((updated) => {
+    const original = data.purchases.find(p => p.id === updated.id);
+    const next = { ...updated };
+
+    if (next.intent === "for_sale") {
+      next.dateAdded = original?.intent === "for_sale"
+        ? (next.dateAdded || original?.dateAdded || original?.forSaleDate || original?.date || today())
+        : today();
+    } else {
+      delete next.dateAdded;
+      delete next.forSaleDate;
+    }
+
+    update({ ...data, purchases: data.purchases.map(p => p.id === updated.id ? next : p) });
+  }, [data, update]);
+
   const deletePurchase = useCallback((id) => {
     update({ ...data, purchases: data.purchases.filter(p => p.id !== id) });
+  }, [data, update]);
+
+  const editSale = useCallback((updated) => {
+    update({ ...data, sales: data.sales.map(s => s.id === updated.id ? updated : s) });
   }, [data, update]);
 
   const deleteSale = useCallback((id) => {
@@ -1132,6 +1599,8 @@ export default function App() {
           padding: 0 16px 40px;
           max-height: 92vh;
           overflow-y: auto;
+          overflow-x: hidden;
+          width: 100%;
         }
         .modal-drag-handle {
           display: flex;
@@ -1205,11 +1674,34 @@ export default function App() {
       <div className="app-inner">
         <SideNav tab={tab} setTab={setTab} />
         <div className="page-content">
-          {tab === "home"      && <HomeTab      data={data} month={month} setMonth={setMonth} />}
+          {localBackup && (
+            <div style={{ margin: "12px 16px 0", background: "#FFF8E7", border: `1.5px solid #F0C040`,
+              borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#7A5C00" }}>📦 Local data found</div>
+                <div style={{ fontSize: 12, color: "#A07800", marginTop: 3 }}>
+                  This device has {localBackup.purchases?.length || 0} purchases &amp; {localBackup.sales?.length || 0} sales stored locally. Upload to cloud so all your devices stay in sync.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={migrateLocalData} style={{
+                  background: "#F0C040", color: "#4A3800", border: "none", borderRadius: 10,
+                  padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  Upload to Cloud ☁️
+                </button>
+                <button onClick={() => setLocalBackup(null)} style={{
+                  background: "none", color: "#A07800", border: `1px solid #F0C040`, borderRadius: 10,
+                  padding: "9px 14px", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+          {tab === "home"      && <HomeTab      data={data} month={month} setMonth={setMonth} setTab={setTab} />}
           {tab === "purchases" && <PurchasesTab data={data} month={month} setMonth={setMonth}
-            onDelete={deletePurchase} onAdd={() => setModal("purchase")} />}
+            onDelete={deletePurchase} onEdit={editPurchase} onAdd={() => setModal("purchase")} />}
           {tab === "sales"     && <SalesTab     data={data} month={month} setMonth={setMonth}
-            onDelete={deleteSale}   onAdd={() => setModal("sale")} inventory={inventory} />}
+            onDelete={deleteSale}   onEdit={editSale} onAdd={() => setModal("sale")} />}
           {tab === "inventory" && <WardrobeTab  inventory={inventory} />}
         </div>
       </div>
