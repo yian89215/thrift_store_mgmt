@@ -177,7 +177,6 @@ function StatCard({ label, value, sub, color, accent, onClick }) {
       <div style={{ fontSize: 19, fontWeight: 700, color: color || C.dark,
         fontFamily: "'Cormorant Garamond', serif" }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>{sub}</div>}
-      {onClick && <div style={{ fontSize: 9, color: C.light, marginTop: 4 }}>tap to view →</div>}
     </div>
   );
 }
@@ -555,7 +554,7 @@ function HomeTab({ data, month, setMonth, setTab }) {
             <span style={{ fontSize: 16 }}>{icon}</span>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color }}>{count} items</div>
-              <div style={{ fontSize: 10, color: C.light }}>{label} · tap to view →</div>
+              <div style={{ fontSize: 10, color: C.light }}>{label}</div>
             </div>
           </div>
         ))}
