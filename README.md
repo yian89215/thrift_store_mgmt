@@ -14,14 +14,17 @@ A mobile-first web app for tracking purchases, sales, and inventory for a small 
 - Stock breakdown by category (pie chart)
 - All stat cards are tappable — navigate directly to the relevant tab
 - Stock indicator blocks (for sale / self-own) link to the Wardrobe tab
+- No "tap to view" hint text — cards are silently clickable
 
 ### Purchases Tab
+- Source field has a **+ Other** chip — tap to type a custom source not in the preset list
 - "All" filter shows every purchase across all time
 - 🏷️ / 💜 sub-filters show this month's for-sale or self-own items
 - Expand any item to see photos, source, notes, and Edit / Delete buttons
 - Edit modal pre-fills all original fields including photos
 
 ### Sales Tab
+- Platform field has a **+ Other** chip — tap to type a custom platform not in the preset list
 - Swipeable pie charts: **Revenue by Platform** and **Profit by Platform** — shows % and amount per platform
 - Swipe left/right or tap the tab strip to switch charts; dot indicator shows current chart
 - Each card shows profit (▲/▼) and sale price in collapsed view
@@ -73,17 +76,16 @@ Create a `.env` file in `my-shop/` with your Firebase config (see `src/firebase.
 
 ## Deploy
 
+Every `git push` to `main` automatically builds and deploys via **GitHub Actions** (`.github/workflows/deploy.yml`). No manual build step needed.
+
 ```bash
-# From the project root — builds + deploys Firestore rules + GitHub Pages in one shot:
+# One-shot: deploys Firestore rules + pushes code (triggers Actions):
 ./deploy.sh
 ```
 
-Or manually:
-```bash
-cd my-shop
-firebase deploy --only firestore:rules
-npm run deploy    # builds then pushes dist/ to the gh-pages branch
-```
+Firestore rules are still deployed manually (they rarely change). The app build and GitHub Pages deploy are fully automated.
+
+Firebase config values must be added as **GitHub Secrets** in repo Settings → Secrets → Actions.
 
 ---
 
@@ -91,14 +93,17 @@ npm run deploy    # builds then pushes dist/ to the gh-pages branch
 
 ```
 my-shop/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml  # auto build & deploy on push to main
 ├── src/
-│   ├── App.jsx        # entire app in one file (components + logic)
-│   └── firebase.js    # Firestore init, reads config from .env
+│   ├── App.jsx         # entire app in one file (components + logic)
+│   └── firebase.js     # Firestore init, reads config from .env
 ├── public/
-├── .env               # Firebase config (gitignored — do not commit)
-├── firestore.rules    # Firestore security rules
-├── index.html
-├── vite.config.js     # base: '/thrift_store_mgmt/'
-└── package.json       # deploy script uses gh-pages
-deploy.sh              # one-shot deploy script (project root)
+├── .env                # Firebase config (gitignored — do not commit)
+├── firestore.rules     # Firestore security rules
+├── index.html          # includes no-cache meta tags
+├── vite.config.js      # base: '/thrift_store_mgmt/'
+└── package.json
+deploy.sh               # one-shot deploy script (project root)
 ```

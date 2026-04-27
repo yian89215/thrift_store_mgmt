@@ -129,11 +129,21 @@ function IntentBadge({ intent }) {
     gap: 3, whiteSpace: "nowrap" }}>{i.emoji} {i.label}</span>;
 }
 
-function ChipRow({ options, value, onChange, activeColor, activeBg }) {
+function ChipRow({ options, value, onChange, activeColor, activeBg, allowOther }) {
+  const isCustom = allowOther && !!value && !options.includes(value);
+  const [showOther, setShowOther] = useState(isCustom);
+
+  const selectPreset = (o) => { onChange(o); setShowOther(false); };
+  const openOther = () => {
+    setShowOther(true);
+    if (options.includes(value)) onChange("");
+  };
+  const otherActive = showOther || isCustom;
+
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
       {options.map(o => (
-        <button key={o} onClick={() => onChange(o)} style={{
+        <button key={o} onClick={() => selectPreset(o)} style={{
           padding: "6px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12,
           fontWeight: value === o ? 700 : 400, transition: "all .15s", fontFamily: "inherit",
           border: `1.5px solid ${value === o ? (activeColor || C.accent) : C.border}`,
@@ -141,6 +151,24 @@ function ChipRow({ options, value, onChange, activeColor, activeBg }) {
           color: value === o ? (activeColor || C.accent) : C.mid,
         }}>{o}</button>
       ))}
+      {allowOther && (
+        <button onClick={openOther} style={{
+          padding: "6px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12,
+          fontWeight: otherActive ? 700 : 400, transition: "all .15s", fontFamily: "inherit",
+          border: `1.5px solid ${otherActive ? (activeColor || C.accent) : C.border}`,
+          background: otherActive ? (activeBg || "#FDF0E8") : "#fff",
+          color: otherActive ? (activeColor || C.accent) : C.mid,
+        }}>+ Other</button>
+      )}
+      {allowOther && otherActive && (
+        <input
+          autoFocus
+          value={isCustom ? value : ""}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Type custom…"
+          style={{ ...inputSt, marginTop: 4 }}
+        />
+      )}
     </div>
   );
 }
@@ -345,7 +373,7 @@ function AddPurchaseModal({ onClose, onSave }) {
 
         <div>
           <Label>Source</Label>
-          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)} />
+          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)} allowOther />
         </div>
 
         {form.category !== "handmade" && (
@@ -453,7 +481,7 @@ function AddSaleModal({ onClose, onSave, inventory }) {
         <div>
           <Label>Platform</Label>
           <ChipRow options={PLATFORMS} value={form.platform} onChange={v => set("platform", v)}
-            activeColor={C.sage} activeBg={C.sageBg} />
+            activeColor={C.sage} activeBg={C.sageBg} allowOther />
         </div>
 
         <div>
@@ -706,7 +734,7 @@ function EditPurchaseModal({ item, onClose, onSave }) {
         </div>
         <div>
           <Label>Source</Label>
-          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)} />
+          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)} allowOther />
         </div>
         {form.category !== "handmade" && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -923,7 +951,7 @@ function EditSaleModal({ item, onClose, onSave }) {
         <div>
           <Label>Platform</Label>
           <ChipRow options={PLATFORMS} value={form.platform} onChange={v => set("platform", v)}
-            activeColor={C.sage} activeBg={C.sageBg} />
+            activeColor={C.sage} activeBg={C.sageBg} allowOther />
         </div>
         <div>
           <Label>Date Sold</Label>

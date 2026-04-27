@@ -120,7 +120,7 @@ All colors are in the `C` object at the top of the file. Never hardcode hex valu
 | `PhotoUpload` | Up to 5 photos; resizes to 600px JPEG before storing |
 | `PhotoStrip` | Read-only display of stored photos with download (↓) button |
 | `StatCard` | Clickable stat block used in HomeTab |
-| `ChipRow` | Row of selectable pill buttons |
+| `ChipRow` | Row of selectable pill buttons; supports `allowOther` prop which appends a "+ Other" chip that reveals a text input for custom values |
 | `MonthNav` | ‹ Month › navigator |
 
 ---
@@ -153,14 +153,27 @@ Note: the tab id is still `"inventory"` internally even though the UI label says
 
 ## Deployment
 
-```bash
-# One-shot deploy (from project root):
-./deploy.sh
+### Auto-deploy via GitHub Actions
+Every `git push` to `main` triggers `.github/workflows/deploy.yml` which:
+1. Installs dependencies (`npm ci`)
+2. Builds the app (`npm run build`) using Firebase config stored as GitHub Secrets
+3. Pushes `dist/` to the `gh-pages` branch via `JamesIves/github-pages-deploy-action@v4`
 
-# What it does:
-# 1. firebase deploy --only firestore:rules
-# 2. npm run deploy  (= npm run build + gh-pages -d dist)
+Required GitHub Secrets (repo Settings → Secrets → Actions):
+`VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+`VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`
+
+The repo must have **Read and write permissions** enabled under Settings → Actions → General → Workflow permissions.
+
+### One-shot deploy script (project root)
+```bash
+./deploy.sh
+# 1. firebase deploy --only firestore:rules  (Firestore rules — still manual)
+# 2. git add -A && git commit && git push    (triggers GitHub Actions)
 ```
+
+### Cache busting
+`index.html` includes `Cache-Control: no-cache` meta tags so browsers always fetch the latest HTML on reload.
 
 The `base` in `vite.config.js` must match the GitHub repository name: `/thrift_store_mgmt/`.
 
