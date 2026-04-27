@@ -310,7 +310,7 @@ function AddPurchaseModal({ onClose, onSave }) {
 
   const save = () => {
     if (!form.name.trim()) return alert("Please enter an item name.");
-    if (!form.cost || isNaN(+form.cost) || +form.cost <= 0) return alert("Please enter a valid cost.");
+    if (form.cost === "" || isNaN(+form.cost) || +form.cost < 0) return alert("Please enter a valid cost.");
     onSave({ ...form, cost: +form.cost });
   };
 
@@ -427,7 +427,7 @@ function AddSaleModal({ onClose, onSave, inventory }) {
 
   const save = () => {
     if (!form.purchaseId) return alert("Please select an item.");
-    if (!form.salePrice || isNaN(+form.salePrice) || +form.salePrice <= 0) return alert("Please enter a valid sale price.");
+    if (form.salePrice === "" || isNaN(+form.salePrice) || +form.salePrice < 0) return alert("Please enter a valid sale price.");
     onSave({ ...form, salePrice: +form.salePrice, name: item.name, category: item.category, cost: item.cost });
   };
 
@@ -681,7 +681,7 @@ function EditPurchaseModal({ item, onClose, onSave }) {
 
   const save = () => {
     if (!form.name.trim()) return alert("Please enter an item name.");
-    if (!form.cost || isNaN(+form.cost) || +form.cost <= 0) return alert("Please enter a valid cost.");
+    if (form.cost === "" || isNaN(+form.cost) || +form.cost < 0) return alert("Please enter a valid cost.");
     onSave({ ...item, ...form, cost: +form.cost });
   };
 
@@ -924,7 +924,7 @@ function EditSaleModal({ item, onClose, onSave }) {
   const profit = item.cost && form.salePrice ? +form.salePrice - +item.cost : null;
 
   const save = () => {
-    if (!form.salePrice || isNaN(+form.salePrice) || +form.salePrice <= 0)
+    if (form.salePrice === "" || isNaN(+form.salePrice) || +form.salePrice < 0)
       return alert("Please enter a valid sale price.");
     onSave({ ...item, ...form, salePrice: +form.salePrice });
   };
