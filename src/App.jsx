@@ -36,7 +36,7 @@ const inputSt = {
 
 // ── STORAGE ──────────────────────────────────────
 
-const EMPTY = { purchases: [], sales: [] };
+const EMPTY = { purchases: [], sales: [], customSources: [], customPlatforms: [] };
 
 // ── HELPERS ──────────────────────────────────────
 
@@ -129,45 +129,58 @@ function IntentBadge({ intent }) {
     gap: 3, whiteSpace: "nowrap" }}>{i.emoji} {i.label}</span>;
 }
 
-function ChipRow({ options, value, onChange, activeColor, activeBg, allowOther }) {
-  const isCustom = allowOther && !!value && !options.includes(value);
-  const [showOther, setShowOther] = useState(isCustom);
+function ChipRow({ options, value, onChange, activeColor, activeBg, allowOther, customOptions = [], onRemoveCustom }) {
+  const allSaved = [...options, ...customOptions];
+  const isTyping = allowOther && !!value && !allSaved.includes(value);
+  const [showOther, setShowOther] = useState(isTyping);
 
   const selectPreset = (o) => { onChange(o); setShowOther(false); };
   const openOther = () => {
     setShowOther(true);
-    if (options.includes(value)) onChange("");
+    if (allSaved.includes(value)) onChange("");
   };
-  const otherActive = showOther || isCustom;
+  const otherActive = showOther || isTyping;
+
+  const chipStyle = (o) => ({
+    borderRadius: 20, cursor: "pointer", fontSize: 12, transition: "all .15s",
+    fontFamily: "inherit", fontWeight: value === o ? 700 : 400,
+    border: `1.5px solid ${value === o ? (activeColor || C.accent) : C.border}`,
+    background: value === o ? (activeBg || "#FDF0E8") : "#fff",
+    color: value === o ? (activeColor || C.accent) : C.mid,
+  });
 
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
       {options.map(o => (
-        <button key={o} onClick={() => selectPreset(o)} style={{
-          padding: "6px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12,
-          fontWeight: value === o ? 700 : 400, transition: "all .15s", fontFamily: "inherit",
-          border: `1.5px solid ${value === o ? (activeColor || C.accent) : C.border}`,
-          background: value === o ? (activeBg || "#FDF0E8") : "#fff",
-          color: value === o ? (activeColor || C.accent) : C.mid,
-        }}>{o}</button>
+        <button key={o} onClick={() => selectPreset(o)}
+          style={{ ...chipStyle(o), padding: "6px 13px" }}>{o}</button>
+      ))}
+      {customOptions.map(o => (
+        <div key={o} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+          <button onClick={() => selectPreset(o)}
+            style={{ ...chipStyle(o), padding: "6px 28px 6px 13px" }}>{o}</button>
+          {onRemoveCustom && (
+            <button onClick={e => { e.stopPropagation(); onRemoveCustom(o); }} style={{
+              position: "absolute", right: 8, background: "none", border: "none",
+              cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0,
+              color: value === o ? (activeColor || C.accent) : C.light,
+            }}>×</button>
+          )}
+        </div>
       ))}
       {allowOther && (
-        <button onClick={openOther} style={{
-          padding: "6px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12,
-          fontWeight: otherActive ? 700 : 400, transition: "all .15s", fontFamily: "inherit",
+        <button onClick={openOther} style={{ ...chipStyle("__other__"),
+          padding: "6px 13px", fontWeight: otherActive ? 700 : 400,
           border: `1.5px solid ${otherActive ? (activeColor || C.accent) : C.border}`,
           background: otherActive ? (activeBg || "#FDF0E8") : "#fff",
           color: otherActive ? (activeColor || C.accent) : C.mid,
         }}>+ Other</button>
       )}
       {allowOther && otherActive && (
-        <input
-          autoFocus
-          value={isCustom ? value : ""}
+        <input autoFocus value={isTyping ? value : ""}
           onChange={e => onChange(e.target.value)}
           placeholder="Type custom…"
-          style={{ ...inputSt, marginTop: 4 }}
-        />
+          style={{ ...inputSt, marginTop: 4 }} />
       )}
     </div>
   );
@@ -301,7 +314,7 @@ function ModalSheet({ onClose, title, children }) {
 
 // ── ADD PURCHASE MODAL ────────────────────────────
 
-function AddPurchaseModal({ onClose, onSave }) {
+function AddPurchaseModal({ onClose, onSave, customSources, onRemoveCustomSource }) {
   const [form, setForm] = useState({
     name: "", category: "vintage", intent: "for_sale",
     cost: "", source: "Japan", isNew: false, date: today(), notes: "", photos: [],
@@ -373,7 +386,8 @@ function AddPurchaseModal({ onClose, onSave }) {
 
         <div>
           <Label>Source</Label>
-          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)} allowOther />
+          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)}
+            allowOther customOptions={customSources || []} onRemoveCustom={onRemoveCustomSource} />
         </div>
 
         {form.category !== "handmade" && (
@@ -415,7 +429,7 @@ function AddPurchaseModal({ onClose, onSave }) {
 
 // ── ADD SALE MODAL ────────────────────────────────
 
-function AddSaleModal({ onClose, onSave, inventory }) {
+function AddSaleModal({ onClose, onSave, inventory, customPlatforms, onRemoveCustomPlatform }) {
   const forSaleInv = inventory.filter(p => p.intent === "for_sale");
   const [form, setForm] = useState({
     purchaseId: forSaleInv[0]?.id || "", salePrice: "",
@@ -481,7 +495,8 @@ function AddSaleModal({ onClose, onSave, inventory }) {
         <div>
           <Label>Platform</Label>
           <ChipRow options={PLATFORMS} value={form.platform} onChange={v => set("platform", v)}
-            activeColor={C.sage} activeBg={C.sageBg} allowOther />
+            activeColor={C.sage} activeBg={C.sageBg} allowOther
+            customOptions={customPlatforms || []} onRemoveCustom={onRemoveCustomPlatform} />
         </div>
 
         <div>
@@ -665,7 +680,7 @@ function HomeTab({ data, month, setMonth, setTab }) {
 
 // ── EDIT PURCHASE MODAL ───────────────────────────
 
-function EditPurchaseModal({ item, onClose, onSave }) {
+function EditPurchaseModal({ item, onClose, onSave, customSources, onRemoveCustomSource }) {
   const [form, setForm] = useState({
     name:     item.name     ?? "",
     category: item.category ?? "vintage",
@@ -734,7 +749,8 @@ function EditPurchaseModal({ item, onClose, onSave }) {
         </div>
         <div>
           <Label>Source</Label>
-          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)} allowOther />
+          <ChipRow options={SOURCES} value={form.source} onChange={v => set("source", v)}
+            allowOther customOptions={customSources || []} onRemoveCustom={onRemoveCustomSource} />
         </div>
         {form.category !== "handmade" && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -826,7 +842,7 @@ function PurchaseCard({ item, onDelete, onEdit }) {
 
 // ── PURCHASES TAB ─────────────────────────────────
 
-function PurchasesTab({ data, month, setMonth, onDelete, onEdit, onAdd }) {
+function PurchasesTab({ data, month, setMonth, onDelete, onEdit, onAdd, customSources, onRemoveCustomSource }) {
   const [filter, setFilter] = useState("all");
   const [editingItem, setEditingItem] = useState(null);
   const monthItems = data.purchases.filter(p => monthOf(p.date) === month);
@@ -904,6 +920,8 @@ function PurchasesTab({ data, month, setMonth, onDelete, onEdit, onAdd }) {
           item={editingItem}
           onClose={() => setEditingItem(null)}
           onSave={updated => { onEdit(updated); setEditingItem(null); }}
+          customSources={customSources}
+          onRemoveCustomSource={onRemoveCustomSource}
         />
       )}
     </div>
@@ -912,7 +930,7 @@ function PurchasesTab({ data, month, setMonth, onDelete, onEdit, onAdd }) {
 
 // ── EDIT SALE MODAL ───────────────────────────────
 
-function EditSaleModal({ item, onClose, onSave }) {
+function EditSaleModal({ item, onClose, onSave, customPlatforms, onRemoveCustomPlatform }) {
   const [form, setForm] = useState({
     salePrice: item.salePrice ?? "",
     platform:  PLATFORMS.includes(item.platform) ? item.platform : PLATFORMS[0],
@@ -951,7 +969,8 @@ function EditSaleModal({ item, onClose, onSave }) {
         <div>
           <Label>Platform</Label>
           <ChipRow options={PLATFORMS} value={form.platform} onChange={v => set("platform", v)}
-            activeColor={C.sage} activeBg={C.sageBg} allowOther />
+            activeColor={C.sage} activeBg={C.sageBg} allowOther
+            customOptions={customPlatforms || []} onRemoveCustom={onRemoveCustomPlatform} />
         </div>
         <div>
           <Label>Date Sold</Label>
@@ -1174,7 +1193,7 @@ function SalesCharts({ sales }) {
 
 // ── SALES TAB ─────────────────────────────────────
 
-function SalesTab({ data, month, setMonth, onDelete, onEdit, onAdd }) {
+function SalesTab({ data, month, setMonth, onDelete, onEdit, onAdd, customPlatforms, onRemoveCustomPlatform }) {
   const [editingSale, setEditingSale] = useState(null);
   const sales    = data.sales.filter(s => monthOf(s.date) === month);
   const salesWithDates = sales.map(s => {
@@ -1243,6 +1262,8 @@ function SalesTab({ data, month, setMonth, onDelete, onEdit, onAdd }) {
           item={editingSale}
           onClose={() => setEditingSale(null)}
           onSave={updated => { onEdit(updated); setEditingSale(null); }}
+          customPlatforms={customPlatforms}
+          onRemoveCustomPlatform={onRemoveCustomPlatform}
         />
       )}
     </div>
@@ -1480,10 +1501,30 @@ export default function App() {
     setLocalBackup(null);
   }, [localBackup, update]);
 
+  const customSources   = data.customSources   || [];
+  const customPlatforms = data.customPlatforms || [];
+
+  const addCustomSource = (src, d) => {
+    if (!src || SOURCES.includes(src) || (d.customSources || []).includes(src)) return d.customSources || [];
+    return [...(d.customSources || []), src];
+  };
+  const addCustomPlatform = (plat, d) => {
+    if (!plat || PLATFORMS.includes(plat) || (d.customPlatforms || []).includes(plat)) return d.customPlatforms || [];
+    return [...(d.customPlatforms || []), plat];
+  };
+
+  const removeCustomSource = useCallback((src) => {
+    update({ ...data, customSources: customSources.filter(s => s !== src) });
+  }, [data, update, customSources]);
+
+  const removeCustomPlatform = useCallback((plat) => {
+    update({ ...data, customPlatforms: customPlatforms.filter(p => p !== plat) });
+  }, [data, update, customPlatforms]);
+
   const addPurchase = useCallback((p) => {
     const purchase = { ...p, id: uid(), sold: false };
     if (purchase.intent === "for_sale") purchase.dateAdded = today();
-    update({ ...data, purchases: [...data.purchases, purchase] });
+    update({ ...data, purchases: [...data.purchases, purchase], customSources: addCustomSource(p.source, data) });
     setModal(null);
   }, [data, update]);
 
@@ -1495,6 +1536,8 @@ export default function App() {
         p.id === s.purchaseId ? { ...p, sold: true, photos: [] } : p
       ),
       sales: [...data.sales, { ...s, id: uid(), buyDate: dateAdded, dateAdded }],
+      customSources: data.customSources || [],
+      customPlatforms: addCustomPlatform(s.platform, data),
     });
     setModal(null);
   }, [data, update]);
@@ -1512,7 +1555,13 @@ export default function App() {
       delete next.forSaleDate;
     }
 
-    update({ ...data, purchases: data.purchases.map(p => p.id === updated.id ? next : p) });
+    const updatedSales = data.sales.map(s =>
+      s.purchaseId === updated.id
+        ? { ...s, name: next.name, category: next.category, cost: next.cost }
+        : s
+    );
+
+    update({ ...data, purchases: data.purchases.map(p => p.id === updated.id ? next : p), sales: updatedSales, customSources: addCustomSource(updated.source, data) });
   }, [data, update]);
 
   const deletePurchase = useCallback((id) => {
@@ -1520,7 +1569,7 @@ export default function App() {
   }, [data, update]);
 
   const editSale = useCallback((updated) => {
-    update({ ...data, sales: data.sales.map(s => s.id === updated.id ? updated : s) });
+    update({ ...data, sales: data.sales.map(s => s.id === updated.id ? updated : s), customPlatforms: addCustomPlatform(updated.platform, data) });
   }, [data, update]);
 
   const deleteSale = useCallback((id) => {
@@ -1726,17 +1775,21 @@ export default function App() {
           )}
           {tab === "home"      && <HomeTab      data={data} month={month} setMonth={setMonth} setTab={setTab} />}
           {tab === "purchases" && <PurchasesTab data={data} month={month} setMonth={setMonth}
-            onDelete={deletePurchase} onEdit={editPurchase} onAdd={() => setModal("purchase")} />}
+            onDelete={deletePurchase} onEdit={editPurchase} onAdd={() => setModal("purchase")}
+            customSources={customSources} onRemoveCustomSource={removeCustomSource} />}
           {tab === "sales"     && <SalesTab     data={data} month={month} setMonth={setMonth}
-            onDelete={deleteSale}   onEdit={editSale} onAdd={() => setModal("sale")} />}
+            onDelete={deleteSale} onEdit={editSale} onAdd={() => setModal("sale")}
+            customPlatforms={customPlatforms} onRemoveCustomPlatform={removeCustomPlatform} />}
           {tab === "inventory" && <WardrobeTab  inventory={inventory} />}
         </div>
       </div>
 
       <BottomNav tab={tab} setTab={setTab} />
 
-      {modal === "purchase" && <AddPurchaseModal onClose={() => setModal(null)} onSave={addPurchase} />}
-      {modal === "sale"     && <AddSaleModal     onClose={() => setModal(null)} onSave={addSale} inventory={inventory} />}
+      {modal === "purchase" && <AddPurchaseModal onClose={() => setModal(null)} onSave={addPurchase}
+        customSources={customSources} onRemoveCustomSource={removeCustomSource} />}
+      {modal === "sale"     && <AddSaleModal     onClose={() => setModal(null)} onSave={addSale} inventory={inventory}
+        customPlatforms={customPlatforms} onRemoveCustomPlatform={removeCustomPlatform} />}
     </div>
   );
 }

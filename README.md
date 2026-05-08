@@ -17,14 +17,14 @@ A mobile-first web app for tracking purchases, sales, and inventory for a small 
 - No "tap to view" hint text — cards are silently clickable
 
 ### Purchases Tab
-- Source field has a **+ Other** chip — tap to type a custom source not in the preset list
+- Source field has a **+ Other** chip — tap to type a custom source; it's saved and appears as a chip automatically next time; tap × on any custom chip to remove it
 - "All" filter shows every purchase across all time
 - 🏷️ / 💜 sub-filters show this month's for-sale or self-own items
 - Expand any item to see photos, source, notes, and Edit / Delete buttons
 - Edit modal pre-fills all original fields including photos
 
 ### Sales Tab
-- Platform field has a **+ Other** chip — tap to type a custom platform not in the preset list
+- Platform field has a **+ Other** chip — tap to type a custom platform; it's saved and appears as a chip automatically next time; tap × on any custom chip to remove it
 - Swipeable pie charts: **Revenue by Platform** and **Profit by Platform** — shows % and amount per platform
 - Swipe left/right or tap the tab strip to switch charts; dot indicator shows current chart
 - Each card shows profit (▲/▼) and sale price in collapsed view

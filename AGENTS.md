@@ -40,6 +40,9 @@ VITE_FIREBASE_MEASUREMENT_ID
 
 Real-time sync uses `onSnapshot(SHOP_REF, ...)` in `App`'s `useEffect`. Every write uses `setDoc(SHOP_REF, newData)`.
 
+### Custom tags (sources & platforms)
+`data.customSources` and `data.customPlatforms` are string arrays stored in Firestore alongside purchases/sales. They are auto-populated when a user saves an item with a value not in `SOURCES`/`PLATFORMS`. Users can remove them via the × button on each custom chip. The `addCustomSource`/`addCustomPlatform` helpers in App handle deduplication before writing.
+
 ### Local data migration
 On first load, if Firestore is empty but `localStorage` has data under the key `vintage-shop-v2`, the app shows a yellow banner prompting the user to upload local data to Firestore. After migration, localStorage is cleared.
 
@@ -120,7 +123,7 @@ All colors are in the `C` object at the top of the file. Never hardcode hex valu
 | `PhotoUpload` | Up to 5 photos; resizes to 600px JPEG before storing |
 | `PhotoStrip` | Read-only display of stored photos with download (↓) button |
 | `StatCard` | Clickable stat block used in HomeTab |
-| `ChipRow` | Row of selectable pill buttons; supports `allowOther` prop which appends a "+ Other" chip that reveals a text input for custom values |
+| `ChipRow` | Row of selectable pill buttons; `allowOther` adds a "+ Other" chip with text input; `customOptions` shows user-saved tags with a × remove button; `onRemoveCustom` callback fires when × is tapped |
 | `MonthNav` | ‹ Month › navigator |
 
 ---
