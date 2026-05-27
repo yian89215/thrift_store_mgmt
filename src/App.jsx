@@ -4,7 +4,8 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 import { onSnapshot, setDoc } from "firebase/firestore";
-import { SHOP_REF } from "./firebase";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { SHOP_REF, auth } from "./firebase";
 
 const CATS = {
   fashion:  { label: "Fasion",   emoji: "👗", color: "#C17553", bg: "#FDF0E8" },
@@ -525,7 +526,7 @@ function AddSaleModal({ onClose, onSave, inventory, customPlatforms, onRemoveCus
 
 // ── HOME TAB ──────────────────────────────────────
 
-function HomeTab({ data, month, setMonth, setTab }) {
+function HomeTab({ data, month, setMonth, setTab, onSignOut }) {
   const mPurchases = data.purchases.filter(p => monthOf(p.date) === month);
   const mSales     = data.sales.filter(s => monthOf(s.date) === month);
   const inventory  = data.purchases.filter(p => !p.sold);
@@ -561,10 +562,17 @@ function HomeTab({ data, month, setMonth, setTab }) {
 
   return (
     <div className="tab-content">
-      <div className="page-header-center">
+      <div className="page-header-center" style={{ position: "relative" }}>
         <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 26, fontWeight: 700,
           color: C.dark, margin: 0, letterSpacing: 0.5 }}>✦ Shop Ledger</h1>
         <div style={{ fontSize: 10, color: C.light, marginTop: 3, letterSpacing: 1.5 }}>UNIQUE · HANDMADE</div>
+        {onSignOut && (
+          <button className="mobile-signout" onClick={onSignOut} style={{
+            position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)",
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: 12, color: C.light, fontFamily: "inherit", padding: "4px 0",
+          }}>⎋</button>
+        )}
       </div>
 
       <MonthNav value={month} onChange={setMonth} />
@@ -1391,7 +1399,7 @@ function WardrobeTab({ inventory }) {
 
 // ── SIDE NAV (desktop) ────────────────────────────
 
-function SideNav({ tab, setTab }) {
+function SideNav({ tab, setTab, onSignOut }) {
   const tabs = [
     { id: "home",      icon: "◎", label: "Overview" },
     { id: "purchases", icon: "↓", label: "Purchases" },
@@ -1417,6 +1425,14 @@ function SideNav({ tab, setTab }) {
             color: tab === t.id ? C.accent : C.mid }}>{t.label}</span>
         </button>
       ))}
+      {onSignOut && (
+        <button onClick={onSignOut} style={{
+          marginTop: "auto", width: "100%", padding: "12px 24px",
+          background: "none", border: "none", borderTop: `1px solid ${C.border}`,
+          cursor: "pointer", display: "flex", alignItems: "center", gap: 12,
+          textAlign: "left", fontFamily: "inherit", color: C.light, fontSize: 14,
+        }}>⎋ Sign out</button>
+      )}
     </div>
   );
 }
@@ -1447,9 +1463,71 @@ function BottomNav({ tab, setTab }) {
   );
 }
 
+// ── LOGIN SCREEN ─────────────────────────────────
+
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch {
+      setError("Incorrect email or password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: C.cream, minHeight: "100vh", display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 24,
+      fontFamily: "'DM Sans', sans-serif",
+    }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap'); * { box-sizing: border-box; }`}</style>
+      <div style={{ width: "100%", maxWidth: 380 }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 30,
+            fontWeight: 700, color: C.dark, margin: 0 }}>✦ Shop Ledger</h1>
+          <div style={{ fontSize: 10, color: C.light, letterSpacing: 1.5, marginTop: 4 }}>UNIQUE · HANDMADE</div>
+        </div>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <Label>Email</Label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="your@email.com" style={inputSt} required autoComplete="email" />
+          </div>
+          <div>
+            <Label>Password</Label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••" style={inputSt} required autoComplete="current-password" />
+          </div>
+          {error && (
+            <div style={{ fontSize: 13, color: C.error, background: "#FEE9E7",
+              borderRadius: 10, padding: "10px 14px" }}>{error}</div>
+          )}
+          <button type="submit" disabled={loading} style={{
+            background: C.accent, color: "#fff", border: "none",
+            borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 700,
+            cursor: loading ? "default" : "pointer", fontFamily: "inherit",
+            opacity: loading ? 0.7 : 1,
+          }}>{loading ? "Signing in…" : "Sign In"}</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── APP ───────────────────────────────────────────
 
 export default function App() {
+  const [user,  setUser]  = useState(undefined); // undefined = auth loading
   const [tab,   setTab]   = useState("home");
   const [data,  setData]  = useState(EMPTY);
   const [ready, setReady] = useState(false);
@@ -1458,7 +1536,18 @@ export default function App() {
 
   const [localBackup, setLocalBackup] = useState(null);
 
+  // Auth state listener
   useEffect(() => {
+    return onAuthStateChanged(auth, (u) => setUser(u ?? null));
+  }, []);
+
+  // Firestore listener (only when authenticated)
+  useEffect(() => {
+    if (!user) {
+      setReady(false);
+      return;
+    }
+
     const checkLocal = () => {
       try {
         const raw = localStorage.getItem("vintage-shop-v2");
@@ -1487,7 +1576,7 @@ export default function App() {
       setReady(true);
     });
     return unsub;
-  }, []);
+  }, [user]);
 
   const update = useCallback((nd) => {
     setData(nd);
@@ -1582,12 +1671,17 @@ export default function App() {
 
   const inventory = data.purchases.filter(p => !p.sold);
 
-  if (!ready) return (
+  const handleSignOut = () => signOut(auth);
+
+  // Auth loading or Firestore loading
+  if (user === undefined || (user && !ready)) return (
     <div style={{ background: C.cream, height: "100vh", display: "flex",
       alignItems: "center", justifyContent: "center" }}>
       <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 20, color: C.accent }}>Loading…</div>
     </div>
   );
+
+  if (!user) return <LoginScreen />;
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", fontFamily: "'DM Sans', sans-serif" }}>
@@ -1684,8 +1778,12 @@ export default function App() {
           padding: 12px 0 4px;
         }
 
+        /* ── Mobile sign-out (hidden on desktop, SideNav handles it) ── */
+        .mobile-signout { display: block; }
+
         /* ── Tablet / Desktop ── */
         @media (min-width: 768px) {
+          .mobile-signout { display: none !important; }
           .app-inner {
             max-width: 1100px;
             gap: 0;
@@ -1748,7 +1846,7 @@ export default function App() {
       `}</style>
 
       <div className="app-inner">
-        <SideNav tab={tab} setTab={setTab} />
+        <SideNav tab={tab} setTab={setTab} onSignOut={handleSignOut} />
         <div className="page-content">
           {localBackup && (
             <div style={{ margin: "12px 16px 0", background: "#FFF8E7", border: `1.5px solid #F0C040`,
@@ -1773,7 +1871,7 @@ export default function App() {
               </div>
             </div>
           )}
-          {tab === "home"      && <HomeTab      data={data} month={month} setMonth={setMonth} setTab={setTab} />}
+          {tab === "home"      && <HomeTab      data={data} month={month} setMonth={setMonth} setTab={setTab} onSignOut={handleSignOut} />}
           {tab === "purchases" && <PurchasesTab data={data} month={month} setMonth={setMonth}
             onDelete={deletePurchase} onEdit={editPurchase} onAdd={() => setModal("purchase")}
             customSources={customSources} onRemoveCustomSource={removeCustomSource} />}
