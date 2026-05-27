@@ -318,7 +318,7 @@ function ModalSheet({ onClose, title, children }) {
 function AddPurchaseModal({ onClose, onSave, customSources, onRemoveCustomSource }) {
   const [form, setForm] = useState({
     name: "", category: "vintage", intent: "for_sale",
-    cost: "", source: "Japan", isNew: false, date: today(), notes: "", photos: [],
+    cost: "", source: SOURCES[0], isNew: false, date: today(), notes: "", photos: [],
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -331,6 +331,12 @@ function AddPurchaseModal({ onClose, onSave, customSources, onRemoveCustomSource
   return (
     <ModalSheet onClose={onClose} title="Add Purchase">
       <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", minWidth: 0 }}>
+
+        <div>
+          <Label>Item Name</Label>
+          <input autoFocus value={form.name} onChange={e => set("name", e.target.value)}
+            placeholder="e.g. Levi's 501 Jeans" style={inputSt} />
+        </div>
 
         <div>
           <Label>Purpose</Label>
@@ -352,12 +358,6 @@ function AddPurchaseModal({ onClose, onSave, customSources, onRemoveCustomSource
           <div style={{ marginTop: 7, fontSize: 11, color: C.light, textAlign: "center" }}>
             {form.intent === "for_sale" ? "Counted in profit calculation." : "Cost tracked, not counted in profit."}
           </div>
-        </div>
-
-        <div>
-          <Label>Item Name</Label>
-          <input value={form.name} onChange={e => set("name", e.target.value)}
-            placeholder="e.g. Levi's 501 Jeans" style={inputSt} />
         </div>
 
         <div>
@@ -434,7 +434,7 @@ function AddSaleModal({ onClose, onSave, inventory, customPlatforms, onRemoveCus
   const forSaleInv = inventory.filter(p => p.intent === "for_sale");
   const [form, setForm] = useState({
     purchaseId: forSaleInv[0]?.id || "", salePrice: "",
-    platform: "Depop", date: today(), notes: "", photos: [],
+    platform: PLATFORMS[0], date: today(), notes: "", photos: [],
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const item = forSaleInv.find(p => p.id === form.purchaseId);
