@@ -317,8 +317,8 @@ function ModalSheet({ onClose, title, children }) {
 
 function AddPurchaseModal({ onClose, onSave, customSources, onRemoveCustomSource }) {
   const [form, setForm] = useState({
-    name: "", category: "vintage", intent: "for_sale",
-    cost: "", source: SOURCES[0], isNew: false, date: today(), notes: "", photos: [],
+    name: "", category: "fashion", intent: "for_sale",
+    cost: "", source: "Carousell", isNew: false, date: today(), notes: "", photos: [],
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
